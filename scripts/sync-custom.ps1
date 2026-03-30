@@ -55,7 +55,7 @@ try {
         Write-Host "  Would: push main to origin"
         Write-Host "  Would: checkout $customBranch, rebase on main"
         if (-not $SkipBuild) { Write-Host "  Would: pnpm install + pnpm ui:build" }
-        if (-not $SkipUpdate) { Write-Host "  Would: openclaw update --channel dev" }
+        if (-not $SkipUpdate) { Write-Host "  Would: pnpm install -g . (link CLI from checkout) + restart gateway" }
         Write-Host ""
         return
     }
@@ -116,6 +116,11 @@ try {
         throw "Rebase of $customBranch failed — resolve conflicts manually"
     }
 
+    # --- Push custom branch to origin ---
+    Write-Step "Pushing $customBranch to origin"
+    git push origin $customBranch --force-with-lease 2>&1
+    Write-Ok "Pushed"
+
     # --- Build ---
     if (-not $SkipBuild) {
         Write-Step "Installing dependencies"
@@ -129,13 +134,20 @@ try {
         Write-Warn "Skipping build (--SkipBuild)"
     }
 
-    # --- Update ---
+    # --- Link global CLI from this checkout ---
+    # NOTE: We do NOT use 'openclaw update --channel dev' because it forces
+    # checkout to main and would lose our custom branch.
+    # Instead we link the global CLI directly from the current checkout.
     if (-not $SkipUpdate) {
-        Write-Step "Running openclaw update --channel dev"
-        openclaw update --channel dev 2>&1
-        Write-Ok "Update complete"
+        Write-Step "Linking global CLI from git checkout"
+        pnpm install -g . 2>&1
+        Write-Ok "Global CLI linked from $repoRoot"
+
+        Write-Step "Restarting gateway"
+        openclaw gateway restart 2>&1
+        Write-Ok "Gateway restarted"
     } else {
-        Write-Warn "Skipping update (--SkipUpdate)"
+        Write-Warn "Skipping global link + restart (--SkipUpdate)"
     }
 
     # --- Restore stash ---
